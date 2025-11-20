@@ -1,0 +1,13 @@
+node_modules
+npm-debug.log
+.env
+.git
+.gitignore
+*.md
+logs/
+screenshots/
+config/accounts.json
+config/proxies.txt
+.DS_Store
+*.log
+

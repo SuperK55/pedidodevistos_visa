@@ -1,0 +1,29 @@
+{
+  "name": "visa-booking-automation",
+  "version": "1.0.0",
+  "description": "Portuguese visa appointment booking automation with parallel session management",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node src/test.js"
+  },
+  "keywords": [
+    "automation",
+    "puppeteer",
+    "visa",
+    "booking"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "puppeteer": "^21.6.1",
+    "axios": "^1.6.2",
+    "winston": "^3.11.0",
+    "dotenv": "^16.3.1"
+  }
+}
+

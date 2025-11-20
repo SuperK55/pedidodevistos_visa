@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  visa-automation:
+    build: .
+    container_name: visa-booking-automation
+    restart: on-failure
+    environment:
+      # CapSolver Configuration
+      CAPSOLVER_API_KEY: ${CAPSOLVER_API_KEY}
+      
+      # Telegram Configuration
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      
+      # Automation Settings
+      PARALLEL_SESSIONS: ${PARALLEL_SESSIONS:-15}
+      SESSION_TIMEOUT_MS: ${SESSION_TIMEOUT_MS:-300000}
+      RETRY_ATTEMPTS: ${RETRY_ATTEMPTS:-2}
+      
+      # Debug Settings
+      HEADLESS: ${HEADLESS:-true}
+      SCREENSHOTS_ON_ERROR: ${SCREENSHOTS_ON_ERROR:-true}
+      
+      # Node Environment
+      NODE_ENV: production
+    
+    volumes:
+      # Mount configuration files
+      - ./config:/app/config:ro
+      
+      # Mount logs directory (persistent)
+      - ./logs:/app/logs
+      
+      # Mount screenshots directory (persistent)
+      - ./screenshots:/app/screenshots
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    
+    # Shared memory size (required for Chromium)
+    shm_size: '2gb'
+    
+    # Security options
+    security_opt:
+      - seccomp:unconfined
+    
+    # Network mode
+    network_mode: bridge
+
+# Optional: Add a network for better isolation
+networks:
+  default:
+    driver: bridge
+

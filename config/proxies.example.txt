@@ -1,0 +1,14 @@
+# Proxy Formats Supported:
+# 1. Standard: host:port:username:password
+# 2. SOAX: host:port:auth:country (e.g., proxy.soax.com:9000:auth:wifi;al;)
+#
+# One proxy per line
+# Lines starting with # are ignored
+
+# Standard format (Webshare, etc.)
+p.webshare.io:80:Mylist1234-residential-MA-1:Saulo12345
+
+# SOAX format examples
+proxy.soax.com:9000:Fg2bMz06fhV8h3ba:wifi;al;
+proxy.soax.com:9001:Fg2bMz06fhV8h3ba:wifi;al;
+
