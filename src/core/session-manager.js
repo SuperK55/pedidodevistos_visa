@@ -72,6 +72,40 @@ class SessionManager {
         }
       });
 
+      // Listen to network requests for debugging
+      this.page.on('request', request => {
+        if (request.url().includes('/login')) {
+          this.logger.info('HTTP Request to /login', {
+            url: request.url(),
+            method: request.method(),
+            headers: request.headers(),
+            postData: request.postData() ? request.postData().substring(0, 300) : 'No post data'
+          });
+        }
+      });
+
+      this.page.on('response', async response => {
+        if (response.url().includes('/login')) {
+          const status = response.status();
+          this.logger.info('HTTP Response from /login', {
+            url: response.url(),
+            status: status,
+            statusText: response.statusText(),
+            headers: response.headers()
+          });
+          
+          // Try to get response body for logging
+          try {
+            const text = await response.text();
+            this.logger.info('Response body preview', {
+              preview: text.substring(0, 200)
+            });
+          } catch (e) {
+            this.logger.warn('Could not read response body', { error: e.message });
+          }
+        }
+      });
+
       // Authenticate proxy if needed
       if (this.proxy) {
         await authenticateProxy(this.page, this.proxy);
@@ -220,61 +254,31 @@ class SessionManager {
           this.logger.warn('reCAPTCHA enterprise API not fully loaded, continuing anyway');
         });
         
-        await this.randomDelay(2000, 3000);
+        // Extra wait to ensure CAPTCHA token is fully valid and to appear more human
+        this.logger.info('Waiting before submission to appear human');
+        await this.randomDelay(8000, 12000);
       }
 
       // Take screenshot before submitting (for debugging)
       await this.takeScreenshot('before_login');
 
-      // Login via AJAX (the site uses AJAX, not form navigation)
-      this.logger.info('Submitting login via AJAX');
+      // Submit login using jQuery AJAX (exactly like the page does)
+      this.logger.info('Submitting login using jQuery AJAX (native page method)');
       
-      const loginResult = await this.page.evaluate(async () => {
+      const loginResult = await this.page.evaluate(() => {
         return new Promise((resolve) => {
-          // Get CAPTCHA response
-          let captchaResponse = '';
-          try {
-            if (typeof grecaptcha !== 'undefined' && grecaptcha.enterprise) {
-              captchaResponse = grecaptcha.enterprise.getResponse();
-              console.log('CAPTCHA response retrieved, length:', captchaResponse?.length || 0);
-            } else {
-              console.log('grecaptcha.enterprise not available');
-            }
-          } catch (e) {
-            console.log('Could not get reCAPTCHA response:', e);
-          }
-
-          // Validate CAPTCHA was retrieved
-          if (!captchaResponse || captchaResponse.length === 0) {
-            resolve({ 
-              success: false, 
-              error: 'CAPTCHA response is empty - token not retrieved properly' 
-            });
-            return;
-          }
-
-          // Prepare data (matching the AJAX format from the page)
           const formId = 'NewloginForm-d';
-          const username = document.querySelector(`#${formId} input[name='username']`)?.value || 
-                          document.querySelector('input[name="username"]')?.value;
-          const password = document.querySelector(`#${formId} input[name='password']`)?.value ||
-                          document.querySelector('input[name="password"]')?.value;
-
-          // Validate credentials
-          if (!username || !password) {
-            resolve({ 
-              success: false, 
-              error: `Missing credentials - username: ${!!username}, password: ${!!password}` 
-            });
+          
+          // Get values
+          const username = $("#" + formId + " input[name='username']").val();
+          const password = $("#" + formId + " input[name='password']").val();
+          const captchaResponse = grecaptcha.enterprise.getResponse();
+          
+          if (!captchaResponse || captchaResponse.length === 0) {
+            resolve({ success: false, error: 'CAPTCHA response empty' });
             return;
           }
-
-          console.log('Submitting login with:', {
-            username: username,
-            passwordLength: password?.length || 0,
-            captchaLength: captchaResponse?.length || 0
-          });
-
+          
           const dataValues = {
             username: username,
             password: password,
@@ -282,79 +286,54 @@ class SessionManager {
             rgpd: 'Y',
             captchaResponse: captchaResponse
           };
-
-          // Make AJAX call (same as the page does)
-          fetch('/VistosOnline/login', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
+          
+          console.log('Submitting with jQuery AJAX:', {
+            username, 
+            passwordLength: password?.length,
+            captchaLength: captchaResponse?.length
+          });
+          
+          // Use jQuery AJAX exactly like the page does
+          $.ajax({
+            url: '/VistosOnline/login',
+            data: dataValues,
+            type: 'POST',
+            success: function(resultData) {
+              console.log("AJAX Success", resultData);
+              try {
+                const resultObj = JSON.parse(resultData);
+                
+                if (resultObj.type === "error") {
+                  resolve({ success: false, error: resultObj.description, responseType: 'error' });
+                } else if (resultObj.type === "ReCaptchaError") {
+                  resolve({ success: false, error: resultObj.description, responseType: 'ReCaptchaError' });
+                } else if (resultObj.type === "secblock") {
+                  resolve({ success: false, error: resultObj.description, responseType: 'secblock' });
+                } else {
+                  // Success!
+                  resolve({ success: true, data: resultObj });
+                }
+              } catch (e) {
+                resolve({ success: false, error: 'Parse error: ' + e.message });
+              }
             },
-            body: new URLSearchParams(dataValues)
-          })
-          .then(response => {
-            // Capture the status before reading body
-            const status = response.status;
-            const statusText = response.statusText;
-            
-            return response.text().then(text => ({
-              status: status,
-              statusText: statusText,
-              body: text
-            }));
-          })
-          .then(responseData => {
-            try {
-              // Check if it's a 429 (rate limit)
-              if (responseData.status === 429) {
-                resolve({ 
-                  success: false, 
-                  error: 'Rate limit exceeded - account blocked',
-                  httpStatus: 429 
-                });
-                return;
-              }
-              
-              // Check for other HTTP errors
-              if (responseData.status >= 400) {
-                resolve({ 
-                  success: false, 
-                  error: `HTTP ${responseData.status}: ${responseData.statusText}`,
-                  httpStatus: responseData.status 
-                });
-                return;
-              }
-              
-              // Try to parse JSON response
-              const resultObj = JSON.parse(responseData.body);
-              
-              if (resultObj.type === 'error') {
-                resolve({ success: false, error: resultObj.description || 'Login failed' });
-              } else if (resultObj.type === 'ReCaptchaError') {
-                resolve({ success: false, error: 'CAPTCHA validation failed: ' + (resultObj.description || 'Invalid token') });
-              } else if (resultObj.type === 'secblock') {
-                resolve({ success: false, error: resultObj.description || 'Security block' });
+            error: function(xhr, status, error) {
+              console.log("AJAX Error", xhr.status, error);
+              if (xhr.status === 429) {
+                resolve({ success: false, error: 'Rate limit exceeded', httpStatus: 429 });
               } else {
-                // Success!
-                resolve({ success: true, data: resultObj });
+                resolve({ success: false, error: 'AJAX failed: ' + error, httpStatus: xhr.status });
               }
-            } catch (e) {
-              resolve({ 
-                success: false, 
-                error: `Parse error: ${e.message}. Response: ${responseData.body.substring(0, 200)}` 
-              });
             }
-          })
-          .catch(error => {
-            resolve({ success: false, error: `Network error: ${error.message}` });
           });
         });
       });
 
       this.logger.info('Login AJAX response received', loginResult);
 
-      if (!loginResult.success) {
+      if (!loginResult || !loginResult.success) {
         await this.takeScreenshot('login_ajax_failed');
-        throw new Error(`Login failed: ${loginResult.error}`);
+        throw new Error(`Login failed: ${loginResult?.error || 'Unknown error'}`);
       }
 
       // Successful login - page will reload, wait for it

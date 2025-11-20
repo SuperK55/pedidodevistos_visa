@@ -86,7 +86,14 @@ class CapSolver {
     };
 
     if (proxyInfo) {
-      taskData.proxy = `http://${proxyInfo.auth}@${proxyInfo.host}:${proxyInfo.port}`;
+      // CapSolver expects: host:port:username:password format
+      if (proxyInfo.username && proxyInfo.password) {
+        taskData.proxy = `${proxyInfo.host}:${proxyInfo.port}:${proxyInfo.username}:${proxyInfo.password}`;
+      } else if (proxyInfo.username) {
+        taskData.proxy = `${proxyInfo.host}:${proxyInfo.port}:${proxyInfo.username}`;
+      } else {
+        taskData.proxy = `${proxyInfo.host}:${proxyInfo.port}`;
+      }
     }
 
     logger.info('Solving hCaptcha', { websiteURL });
@@ -108,7 +115,14 @@ class CapSolver {
     };
 
     if (proxyInfo) {
-      taskData.proxy = `http://${proxyInfo.auth}@${proxyInfo.host}:${proxyInfo.port}`;
+      // CapSolver expects: host:port:username:password format
+      if (proxyInfo.username && proxyInfo.password) {
+        taskData.proxy = `${proxyInfo.host}:${proxyInfo.port}:${proxyInfo.username}:${proxyInfo.password}`;
+      } else if (proxyInfo.username) {
+        taskData.proxy = `${proxyInfo.host}:${proxyInfo.port}:${proxyInfo.username}`;
+      } else {
+        taskData.proxy = `${proxyInfo.host}:${proxyInfo.port}`;
+      }
     }
 
     logger.info('Solving Turnstile', { websiteURL });
@@ -130,13 +144,29 @@ class CapSolver {
     };
 
     if (proxyInfo) {
-      taskData.proxy = `http://${proxyInfo.auth}@${proxyInfo.host}:${proxyInfo.port}`;
+      // CapSolver expects: host:port:username:password format
+      if (proxyInfo.username && proxyInfo.password) {
+        taskData.proxy = `${proxyInfo.host}:${proxyInfo.port}:${proxyInfo.username}:${proxyInfo.password}`;
+      } else if (proxyInfo.username) {
+        taskData.proxy = `${proxyInfo.host}:${proxyInfo.port}:${proxyInfo.username}`;
+      } else {
+        taskData.proxy = `${proxyInfo.host}:${proxyInfo.port}`;
+      }
     }
 
-    logger.info('Solving reCAPTCHA v2', { websiteURL });
+    logger.info('Solving reCAPTCHA v2 with proxy', { 
+      websiteURL, 
+      hasProxy: !!proxyInfo,
+      proxyHost: proxyInfo?.host,
+      taskType: taskData.type
+    });
 
     const taskId = await this.createTask(taskData);
     const solution = await this.getTaskResult(taskId);
+    
+    logger.info('reCAPTCHA v2 solution received', { 
+      tokenLength: solution.gRecaptchaResponse?.length 
+    });
 
     return solution.gRecaptchaResponse;
   }
@@ -265,6 +295,20 @@ class CapSolver {
             if (!injectionResult.injected || injectionResult.verifiedLength === 0) {
               logger.warn('CAPTCHA injection may have failed', injectionResult);
             }
+            
+            // Trigger the onCaptchaSuccess callback if it exists
+            await page.evaluate((token) => {
+              // Hide error message
+              const errorEl = document.getElementById('captchaError');
+              if (errorEl) {
+                errorEl.style.display = 'none';
+              }
+              
+              // Call onCaptchaSuccess if defined
+              if (typeof onCaptchaSuccess === 'function') {
+                onCaptchaSuccess(token);
+              }
+            }, token);
             
             return { type: 'recaptcha', token };
           } else if (captchaData.type === 'turnstile') {
