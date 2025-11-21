@@ -230,17 +230,21 @@
 					</div>
 				</li>
 				
-				<li>
-					<div class="menu_client-area">
-						<div class="d-flex justify-content-center">
-							<a href="/VistosOnline/Authentication.jsp">
-								<button type="button"
-									class="btn btn-primary">Iniciar Sessão
-								</button>
-							</a>
-						</div>
-					</div>
-				</li>
+				<li class="user_area-m"><a href="#userArea"
+					data-toggle="collapse" aria-expanded="false" class="collapsed"><i
+						class="fa fa-user-circle-o user-logo" aria-hidden="true"></i><span
+						class="user-label">NICOLAÇA</span><i
+						class="fa fa_collapse float-right" aria-hidden="true"></i></a>
+
+					<ul class="collapse list-unstyled" id="userArea">
+						<li><a href="/VistosOnline/profile.jsp">Dados pessoais</a></li>
+						<li><a
+							href="/VistosOnline/profile.jsp?area=changePassword">Alterar Password</a></li>
+						<li><a href="/VistosOnline/logout">Terminar Sessão</a></li>
+					</ul></li>
+				<li><a href="/VistosOnline/Questionario">Solicitar pedido de Visto</a></li>
+				<li><a href="/VistosOnline/Pedidos">Consultar pedidos</a></li>
+
 				
 			</ul>
 		</nav>
@@ -325,19 +329,23 @@
 					<div class="container">
 						<div class="row no-gutters">
 				
-							<div class="col-7">
+							<div class="col-9">
 				
 								<div class="dj-megamenu-wrapper">
 									<ul id="dj-megamenu202"
 										class="dj-megamenu dj-megamenu-override horizontalMenu "
 										data-trigger="991">
 										
+										<li class="dj-up itemid161 first"><a class="dj-up_a" href="/VistosOnline/Questionario"><span>Solicitar pedido de Visto</span></a></li>
+										<li class="dj-up itemid161 first"><a class="dj-up_a" href="/VistosOnline/Pedidos"><span>Consultar pedidos</span></a></li>
+
+										
 									</ul>
 								</div>
 							</div>
 
 							
-							<div class="nav-login-area col-5">
+							<div class="nav-login-area col-3">
 							
 										
 								<form id="loginForm-d" name="loginForm-d"
@@ -345,16 +353,31 @@
 									class="form-inline d-flex flex-row-reverse">
 									<div class="align-middle w-100">
 										
-										<div class="row no-gutters" style="padding-top: 5px; padding-bottom: 5px; margin-left: 15px;">
-											<div style="padding-top: 5px;">
-												<a href="/VistosOnline/Authentication.jsp">
-													<button type="button"
-														class="btn btn-primary mb-2 sm-input-btn">Iniciar Sessão
-													</button>
-												</a>
+										<div class="menu-user-area">
+											<div class="align-middle">
+												<div class="btn-group">
+													<div class="bg-transparent cursor-pointer d-flex"
+														data-toggle="dropdown" aria-haspopup="true"
+														aria-expanded="false">
+														<i class="fa fa-user-circle-o user-logo"
+															aria-hidden="true"></i>
+														<div class="user-label">
+															<span>NICOLAÇA</span><i
+																class="fa fa-chevron-down" aria-hidden="true"></i>
+														</div>
+													</div>
+													<div class="dropdown-menu dropdown-menu-right">
+														<a class="dropdown-item" type="button"
+															href="/VistosOnline/profile.jsp"><i class="fa fa-edit"></i>&nbsp;Dados pessoais</a>
+														<a class="dropdown-item" type="button"
+															href="/VistosOnline/profile.jsp?area=changePassword"><i class="fa fa-lock"></i>&nbsp;Alterar Password</a>
+														<a class="dropdown-item" type="button"
+															href="/VistosOnline/logout"><i class="fa fa-power-off"></i>&nbsp;Terminar Sessão</a>
+													</div>
+												</div>
+
 											</div>
 										</div>
-
 										
 									</div>
 								</form>

@@ -114,15 +114,17 @@ class SessionManager {
 
       // Set realistic user agent
       await this.page.setUserAgent(
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
       );
 
       // Set additional headers (avoid headers that cause CORS issues with reCAPTCHA)
       await this.page.setExtraHTTPHeaders({
         'Accept-Language': 'pt-PT,pt;q=0.9,en-US;q=0.8,en;q=0.7',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br'
-        // Removed headers that cause CORS issues with Google reCAPTCHA
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Sec-Ch-Ua': '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"'
       });
 
       // Additional anti-detection measures
@@ -208,6 +210,85 @@ class SessionManager {
 
       await this.randomDelay(2000, 3000);
 
+      // Handle cookie consent popup if it appears (MUST be done before login)
+      this.logger.info('Checking for cookie consent popup');
+      try {
+        // Use page.evaluate to find button by text content
+        const clicked = await this.page.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll('button'));
+          const acceptButton = buttons.find(btn => 
+            btn.textContent.includes('Aceitar todas') || 
+            btn.textContent.includes('Aceitar') ||
+            btn.textContent.includes('Accept all')
+          );
+          if (acceptButton) {
+            acceptButton.click();
+            return true;
+          }
+          return false;
+        });
+        
+        if (clicked) {
+          this.logger.info('Cookie consent accepted');
+          await this.randomDelay(2000, 3000);
+        } else {
+          this.logger.info('No cookie consent popup found');
+        }
+      } catch (e) {
+        this.logger.info('Cookie consent handling skipped', { error: e.message });
+      }
+
+      // Handle GDPR/Privacy consent popup if it appears
+      this.logger.info('Checking for GDPR consent popup');
+      try {
+        const gdprHandled = await this.page.evaluate(() => {
+          // Look for SPECIFIC GDPR checkboxes (loginCheckbox1 and loginCheckbox2 ONLY)
+          const checkbox1 = document.getElementById('loginCheckbox1');
+          const checkbox2 = document.getElementById('loginCheckbox2');
+          const checkbox3 = document.getElementById('loginCheckbox3'); // refuse checkbox
+          
+          let found = false;
+          
+          // Check ONLY the consent checkboxes (not the refuse one)
+          if (checkbox1 && !checkbox1.checked) {
+            checkbox1.checked = true;
+            checkbox1.dispatchEvent(new Event('change', { bubbles: true }));
+            found = true;
+          }
+          
+          if (checkbox2 && !checkbox2.checked) {
+            checkbox2.checked = true;
+            checkbox2.dispatchEvent(new Event('change', { bubbles: true }));
+            found = true;
+          }
+          
+          // Ensure refuse checkbox is UNchecked
+          if (checkbox3 && checkbox3.checked) {
+            checkbox3.checked = false;
+            checkbox3.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          
+          if (found) {
+            // Find and click the submit button (#loginSubmit)
+            const submitBtn = document.getElementById('loginSubmit');
+            if (submitBtn && !submitBtn.disabled) {
+              submitBtn.click();
+              return true;
+            }
+          }
+          return false;
+        });
+        
+        if (gdprHandled) {
+          this.logger.info('GDPR consent accepted and submitted');
+          await this.randomDelay(3000, 4000); // Wait for popup to close and reload
+        } else {
+          this.logger.info('No GDPR consent popup found or already accepted');
+        }
+      } catch (e) {
+        this.logger.info('GDPR consent handling skipped', { error: e.message });
+      }
+
       // Fill login credentials FIRST (before CAPTCHA solving)
       this.logger.info('Filling login credentials');
       await this.page.type('input[name="username"], input#username', this.account.username, {
@@ -254,24 +335,53 @@ class SessionManager {
           this.logger.warn('reCAPTCHA enterprise API not fully loaded, continuing anyway');
         });
         
-        // Extra wait to ensure CAPTCHA token is fully valid and to appear more human
-        this.logger.info('Waiting before submission to appear human');
-        await this.randomDelay(8000, 12000);
+        // Small delay to ensure token is properly set (don't wait too long or token expires)
+        this.logger.info('Brief wait before submission');
+        await this.randomDelay(2000, 3000);
       }
 
       // Take screenshot before submitting (for debugging)
       await this.takeScreenshot('before_login');
+      
+      // Log page state before submission
+      const pageState = await this.page.evaluate(() => {
+        return {
+          cookies: document.cookie,
+          gdprCheckboxes: Array.from(document.querySelectorAll('input[type="checkbox"]')).map(cb => ({
+            id: cb.id,
+            name: cb.name,
+            checked: cb.checked
+          })),
+          visiblePopups: Array.from(document.querySelectorAll('[id*="popup"], [class*="popup"]'))
+            .filter(el => el.style.display !== 'none' && el.offsetParent !== null)
+            .map(el => ({ id: el.id, class: el.className }))
+        };
+      });
+      this.logger.info('Page state before login', pageState);
 
       // Submit login using jQuery AJAX (exactly like the page does)
       this.logger.info('Submitting login using jQuery AJAX (native page method)');
       
       const loginResult = await this.page.evaluate(() => {
         return new Promise((resolve) => {
+          // Check if jQuery is loaded
+          if (typeof $ === 'undefined' || typeof jQuery === 'undefined') {
+            resolve({ success: false, error: 'jQuery not loaded' });
+            return;
+          }
+          
           const formId = 'NewloginForm-d';
           
-          // Get values
+          // Get values  
           const username = $("#" + formId + " input[name='username']").val();
           const password = $("#" + formId + " input[name='password']").val();
+          
+          // Check grecaptcha
+          if (typeof grecaptcha === 'undefined' || !grecaptcha.enterprise) {
+            resolve({ success: false, error: 'grecaptcha.enterprise not loaded' });
+            return;
+          }
+          
           const captchaResponse = grecaptcha.enterprise.getResponse();
           
           if (!captchaResponse || captchaResponse.length === 0) {
@@ -290,7 +400,8 @@ class SessionManager {
           console.log('Submitting with jQuery AJAX:', {
             username, 
             passwordLength: password?.length,
-            captchaLength: captchaResponse?.length
+            captchaLength: captchaResponse?.length,
+            jQueryVersion: $.fn.jquery
           });
           
           // Use jQuery AJAX exactly like the page does
@@ -298,10 +409,13 @@ class SessionManager {
             url: '/VistosOnline/login',
             data: dataValues,
             type: 'POST',
+            dataType: 'text', // Expect text response (will parse manually)
+            timeout: 30000, // 30 second timeout
             success: function(resultData) {
               console.log("AJAX Success", resultData);
               try {
                 const resultObj = JSON.parse(resultData);
+                console.log("Parsed result:", resultObj);
                 
                 if (resultObj.type === "error") {
                   resolve({ success: false, error: resultObj.description, responseType: 'error' });
@@ -314,25 +428,58 @@ class SessionManager {
                   resolve({ success: true, data: resultObj });
                 }
               } catch (e) {
-                resolve({ success: false, error: 'Parse error: ' + e.message });
+                console.error("Parse error:", e);
+                resolve({ success: false, error: 'Parse error: ' + e.message + '. Data: ' + resultData });
               }
             },
             error: function(xhr, status, error) {
-              console.log("AJAX Error", xhr.status, error);
+              console.error("AJAX Error", {
+                status: xhr.status,
+                statusText: xhr.statusText,
+                readyState: xhr.readyState,
+                responseText: xhr.responseText,
+                error: error,
+                ajaxStatus: status
+              });
+              
               if (xhr.status === 429) {
-                resolve({ success: false, error: 'Rate limit exceeded', httpStatus: 429 });
+                resolve({ success: false, error: 'Rate limit exceeded (429)', httpStatus: 429 });
+              } else if (xhr.status === 0) {
+                resolve({ success: false, error: 'Network error (status 0) - possible CORS or connection issue', httpStatus: 0 });
               } else {
-                resolve({ success: false, error: 'AJAX failed: ' + error, httpStatus: xhr.status });
+                resolve({ success: false, error: `AJAX failed: ${status} - ${error} (HTTP ${xhr.status})`, httpStatus: xhr.status });
               }
             }
           });
         });
       });
 
+      // Get browser console logs
+      const consoleLogs = await this.page.evaluate(() => {
+        return window.__consoleLogs__ || [];
+      });
+      
       this.logger.info('Login AJAX response received', loginResult);
+      
+      if (consoleLogs.length > 0) {
+        this.logger.info('Browser console logs', { logs: consoleLogs });
+      }
 
       if (!loginResult || !loginResult.success) {
         await this.takeScreenshot('login_ajax_failed');
+        
+        // Log page content for debugging
+        const pageDebug = await this.page.evaluate(() => {
+          return {
+            url: window.location.href,
+            cookies: document.cookie,
+            hasJQuery: typeof $ !== 'undefined',
+            hasGrecaptcha: typeof grecaptcha !== 'undefined',
+            formExists: !!document.querySelector('#NewloginForm-d')
+          };
+        });
+        this.logger.info('Page debug info', pageDebug);
+        
         throw new Error(`Login failed: ${loginResult?.error || 'Unknown error'}`);
       }
 
